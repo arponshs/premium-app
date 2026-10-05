@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ultra Pro Music Player - Lag Free</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  :root{
+    --main-color1: #00ffff;
+    --main-color2: #ff00ff;
+  }
+  body{
+    background:#000; color:#fff; font-family: 'Poppins', sans-serif;
+    overflow:hidden; height:100vh; width:100vw; transition:0.3s;
+  }
+  #visualizer{
+    position:fixed; top:0; left:0;
+    width:100vw; height:100vh; z-index:0;
+  }
+.player{
+    position:relative; z-index:2;
+    width:100%; max-width:500px;
+    margin:0 auto; padding:15px;
+    background:rgba(0,0,0,0.4);
+    backdrop-filter: blur(25px);
+    border-radius:0 0 25px 25px;
+    border-bottom:2px solid var(--main-color1);
+    transition: border-color 0.5s;
+  }
+  h1{
+    font-size:1.1rem; text-align:center; margin-bottom:10px;
+    background:linear-gradient(90deg,var(--main-color1),var(--main-color2));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    transition:0.5s;
+  }
+  #fileInput{
+    width:100%; padding:12px; background:rgba(0,0,0,0.6);
+    border:2px dashed var(--main-color1); border-radius:12px; color:#fff;
+    margin-bottom:10px; transition:0.5s;
+  }
+ .grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0;}
+ .row{display:flex; gap:8px; justify-content:center; margin:8px 0; flex-wrap:wrap;}
+  button, select{
+    padding:12px; border:none; border-radius:12px;
+    background:linear-gradient(135deg,var(--main-color1),var(--main-color2));
+    color:#000; font-weight:bold; font-size:0.9rem;
+    cursor:pointer; flex:1; min-width:80px; transition:0.5s;
+  }
+  button:active{transform:scale(0.95)}
+  button.active{box-shadow:0 0 15px var(--main-color2)}
+ .slider-group{margin:8px 0;}
+  label{font-size:0.75rem; color:var(--main-color1); display:flex; justify-content:space-between; transition:0.5s;}
+  input[type=range]{width:100%; height:6px; accent-color:var(--main-color2); transition:0.5s;}
+  #playlist{max-height:120px; overflow-y:auto; background:rgba(0,0,0,0.5); border-radius:10px; padding:5px; font-size:0.8rem;}
+  #playlist div{padding:6px; border-bottom:1px solid #333; cursor:pointer; transition:0.3s;}
+  #playlist div.playing{color:var(--main-color1); background:rgba(0,255,255,0.1);}
+  #progress{width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:10px; margin:10px 0; cursor:pointer;}
+  #progressBar{height:100%; width:0%; background:linear-gradient(90deg,var(--main-color1),var(--main-color2)); border-radius:10px; transition:0.5s;}
+  #songName{font-size:0.85rem; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#aaa;}
+</style>
+</head>
+<body>
+<canvas id="visualizer"></canvas>
+
+<div class="player">
+  <h1>🎧 ULTRA PRO PLAYER 🎧</h1>
+  <input type="file" id="fileInput" accept="audio/*" multiple>
+  <div id="songName">গান সিলেক্ট করুন</div>
+  <div class="row">
+    <button id="prevBtn">⏮</button>
+    <button id="playBtn" disabled>▶</button>
+    <button id="pauseBtn" disabled>⏸</button>
+    <button id="nextBtn">⏭</button>
+    <button id="fullscreenBtn">⛶</button>
+  </div>
+  <label>Visual Style</label>
+  <select id="visualSelect">
+    <option value="bar">1. Neon Bars</option>
+    <option value="circle">2. Bass Circle</option>
+    <option value="wave">3. Sound Wave</option>
+    <option value="fire">4. Fire Bars</option>
+    <option value="particles">5. Particles</option>
+    <option value="spectrum">6. Spectrum</option>
+    <option value="vortex">7. Vortex</option>
+    <option value="grid">8. Neon Grid</option>
+  </select>
+  <div class="grid">
+    <div class="slider-group"><label>Bass <span id="bassVal">0</span>dB</label><input type="range" id="bass" min="-15" max="20" value="0"></div>
+    <div class="slider-group"><label>Mid <span id="midVal">0</span>dB</label><input type="range" id="mid" min="-15" max="15" value="0"></div>
+    <div class="slider-group"><label>Treble <span id="trebleVal">0</span>dB</label><input type="range" id="treble" min="-15" max="15" value="0"></div>
+    <div class="slider-group"><label>Volume <span id="volVal">70</span>%</label><input type="range" id="volume" min="0" max="1" step="0.01" value="0.7"></div>
+  </div>
+  <label>Playlist</label>
+  <div id="playlist"></div>
+  <div id="progress"><div id="progressBar"></div></div>
+  <audio id="audio"></audio>
+</div>
+
+<script>
+const audio = document.getElementById('audio');
+const fileInput = document.getElementById('fileInput');
+const playBtn = document.getElementById('playBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const songName = document.getElementById('songName');
+const playlist = document.getElementById('playlist');
+const visualSelect = document.getElementById('visualSelect');
+const bass = document.getElementById('bass'), mid = document.getElementById('mid'), treble = document.getElementById('treble'), volume = document.getElementById('volume');
+const bassVal = document.getElementById('bassVal'), midVal = document.getElementById('midVal'), trebleVal = document.getElementById('trebleVal'), volVal = document.getElementById('volVal');
+const progress = document.getElementById('progress'), progressBar = document.getElementById('progressBar');
+const canvas = document.getElementById('visualizer'), ctx = canvas.getContext('2d', {alpha:false}); // GPU fast
+
+let audioContext, analyser, source, bassFilter, midFilter, trebleFilter, gainNode, dataArray;
+let songs = [], currentIndex = 0;
+let visualMode = 'bar';
+let colorHue = 0; // কালার চেঞ্জ এর জন্য
+
+// Resize
+function resize(){canvas.width = window.innerWidth; canvas.height = window.innerHeight;}
+resize(); window.addEventListener('resize', resize);
+
+// প্রতি 2 সেকেন্ডে কালার চেঞ্জ
+setInterval(()=>{
+  colorHue = (colorHue + 30) % 360;
+  document.documentElement.style.setProperty('--main-color1', `hsl(${colorHue}, 100%, 60%)`);
+  document.documentElement.style.setProperty('--main-color2', `hsl(${(colorHue+60)%360}, 100%, 60%)`);
+}, 5000);
+
+// Playlist
+fileInput.onchange = (e) => {
+  songs = Array.from(e.target.files);
+  playlist.innerHTML = '';
+  songs.forEach((file,i)=>{
+    const div = document.createElement('div');
+    div.textContent = `${i+1}. ${file.name}`;
+    div.onclick = () => playSong(i);
+    playlist.appendChild(div);
+  });
+  if(songs.length>0) playSong(0);
+}
+
+function playSong(i){
+  currentIndex = i;
+  audio.src = URL.createObjectURL(songs[i]);
+  songName.textContent = songs[i].name;
+  [...playlist.children].forEach((c,j)=>c.classList.toggle('playing', j===i));
+  [playBtn,pauseBtn].forEach(b=>b.disabled=false);
+  audio.play();
+  setupAudio();
+}
+
+prevBtn.onclick = () => {currentIndex = (currentIndex-1+songs.length)%songs.length; playSong(currentIndex);}
+nextBtn.onclick = () => {currentIndex = (currentIndex+1)%songs.length; playSong(currentIndex);}
+audio.onended = () => nextBtn.onclick();
+playBtn.onclick = () => {audioContext.resume(); audio.play();}
+pauseBtn.onclick = () => audio.pause();
+
+// Fullscreen
+fullscreenBtn.onclick = () => {
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+}
+
+function setupAudio(){
+  if(!audioContext){
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    bassFilter = audioContext.createBiquadFilter(); bassFilter.type="lowshelf"; bassFilter.frequency.value=200;
+    midFilter = audioContext.createBiquadFilter(); midFilter.type="peaking"; midFilter.frequency.value=1000; midFilter.Q.value=1;
+    trebleFilter = audioContext.createBiquadFilter(); trebleFilter.type="highshelf"; trebleFilter.frequency.value=3000;
+    gainNode = audioContext.createGain();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize=64; // ল্যাগ কমানোর জন্য 128 থেকে 64
+    analyser.smoothingTimeConstant=0.9; // আরো স্মুথ
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    source = audioContext.createMediaElementSource(audio);
+    source.connect(bassFilter).connect(midFilter).connect(trebleFilter).connect(gainNode).connect(analyser).connect(audioContext.destination);
+    draw();
+  }
+}
+
+// EQ Controls
+bass.oninput = () => {bassFilter.gain.value = bass.value; bassVal.textContent=bass.value;}
+mid.oninput = () => {midFilter.gain.value = mid.value; midVal.textContent=mid.value;}
+treble.oninput = () => {trebleFilter.gain.value = treble.value; trebleVal.textContent=treble.value;}
+volume.oninput = () => {gainNode.gain.value = volume.value; volVal.textContent=Math.round(volume.value*100);}
+visualSelect.onchange = () => visualMode = visualSelect.value;
+
+audio.ontimeupdate = () => {progressBar.style.width = (audio.currentTime / audio.duration * 100 || 0) + '%';}
+progress.onclick = (e) => {audio.currentTime = (e.offsetX / progress.clientWidth) * audio.duration;}
+
+// 8 টা ল্যাগ ফ্রি ভিজুয়াল - এখন 32 বার
+function draw(){
+  requestAnimationFrame(draw);
+  if(!analyser) return;
+  analyser.getByteFrequencyData(dataArray);
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,canvas.width,canvas.height); // clearRect এর বদলে fillRect = ফাস্ট
+
+  const bassPower = dataArray.slice(0,6).reduce((a,b)=>a+b)/6;
+  if(bassPower > 140){ // Bass pulse - এখন শুধু বর্ডার ফ্ল্যাশ
+    document.querySelector('.player').style.boxShadow = `0 0 30px hsl(${colorHue},100%,60%)`;
+    setTimeout(()=>document.querySelector('.player').style.boxShadow='none', 120);
+  }
+
+  const bars = 32; // 64 থেকে 32 - ল্যাগ 50% কম
+  const bw = canvas.width/bars;
+
+  if(visualMode==='bar'){
+    for(let i=0;i<bars;i++){
+      const h=dataArray[i*2]/255*canvas.height*0.5;
+      ctx.fillStyle=`hsl(${i*11+colorHue},100%,60%)`; // কালার চেঞ্জ
+      ctx.fillRect(i*bw,canvas.height-h,bw-2,h);
+    }
+  }
+  if(visualMode==='circle'){
+    ctx.beginPath(); const r=120+bassPower;
+    for(let i=0;i<64;i++){
+      const a=i/64*Math.PI*2;
+      const x=canvas.width/2+Math.cos(a)*(r+dataArray[i]);
+      const y=canvas.height/2+Math.sin(a)*(r+dataArray[i]);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle=`hsl(${colorHue},100%,60%)`;
+    ctx.lineWidth=4; ctx.stroke();
+  }
+  if(visualMode==='wave'){
+    ctx.beginPath(); ctx.moveTo(0,canvas.height/2);
+    for(let i=0;i<canvas.width;i++){
+      const v=dataArray[i%64]/128;
+      ctx.lineTo(i,canvas.height/2+v*canvas.height*0.2*Math.sin(i*0.01));
+    }
+    ctx.strokeStyle=`hsl(${colorHue},100%,60%)`; ctx.lineWidth=3; ctx.stroke();
+  }
+  if(visualMode==='fire'){
+    for(let i=0;i<bars;i++){
+      const h=dataArray[i*2]/255*canvas.height*0.5;
+      const grad=ctx.createLinearGradient(0,canvas.height,0,canvas.height-h);
+      grad.addColorStop(0,'red'); grad.addColorStop(0.5,'orange'); grad.addColorStop(1,`hsl(${colorHue},100%,60%)`);
+      ctx.fillStyle=grad; ctx.fillRect(i*bw,canvas.height-h,bw-1,h);
+    }
+  }
+  if(visualMode==='particles'){
+    for(let i=0;i<60;i++){ // 100 থেকে 60
+      const x=(i*40)%canvas.width;
+      const y=canvas.height-dataArray[i%64]*2;
+      ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${i*6+colorHue},100%,60%)`; ctx.fill();
+    }
+  }
+  if(visualMode==='spectrum'){
+    for(let i=0;i<bars;i++){
+      const h=dataArray[i*2]/255*canvas.height;
+      ctx.fillStyle=`hsl(${i*11+colorHue},100%,50%)`;
+      ctx.fillRect(i*bw,canvas.height-h,bw,h);
+    }
+  }
+  if(visualMode==='vortex'){
+    ctx.translate(canvas.width/2,canvas.height/2); ctx.rotate(Date.now()*0.0005);
+    for(let i=0;i<64;i++){
+      const r=i*4+dataArray[i];
+      ctx.beginPath(); ctx.arc(0,0,r, i*0.1, i*0.1+0.2);
+      ctx.strokeStyle=`hsl(${i*6+colorHue},100%,60%)`; ctx.stroke();
+    }
+    ctx.setTransform(1,0,0,1,0,0);
+  }
+  if(visualMode==='grid'){
+    const size=25; // 20 থেকে 25
+    for(let x=0;x<canvas.width;x+=size){
+      for(let y=0;y<canvas.height;y+=size){
+        const v=dataArray[(x+y)%64];
+        ctx.fillStyle=`rgba(${colorHue},255,255,${v/255})`;
+        ctx.fillRect(x,y,size-3,size-3);
+      }
+    }
+  }
+}
+</script>
+</body>
+</html>
